@@ -1,0 +1,51 @@
+name: softer-line-test
+on: push
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Stub python-build
+        run: |
+          mkdir -p "$RUNNER_TEMP/stub"
+          printf '#!/bin/sh\nexit "${STUB_STATUS:-0}"\n' > "$RUNNER_TEMP/stub/python-build"
+          chmod +x "$RUNNER_TEMP/stub/python-build"
+          /bin/bash --version | head -1
+      - name: Success, no linker vars -> Congratulations, exit 0
+        run: |
+          set +e
+          env -u LD_LIBRARY_PATH -u LD_PRELOAD PATH="$RUNNER_TEMP/stub:$PATH" /bin/bash bin/pyenv-doctor >out 2>err; rc=$?
+          set -e
+          cat out err; echo "rc=$rc"
+          [ "$rc" = 0 ]
+          grep -q 'Congratulations' out
+          ! grep -q 'see the warning above' out
+          ! grep -q 'Warning' err
+      - name: Success with linker var -> softer line, no Congratulations, exit 0
+        run: |
+          set +e
+          LD_LIBRARY_PATH=/x PATH="$RUNNER_TEMP/stub:$PATH" /bin/bash bin/pyenv-doctor >out 2>err; rc=$?
+          set -e
+          cat out err; echo "rc=$rc"
+          [ "$rc" = 0 ]
+          grep -q 'You can build pythons, but see the warning above.' out
+          ! grep -q 'Congratulations' out
+          grep -q 'LD_LIBRARY_PATH' err
+      - name: Failure with linker var -> problem block, exit 1
+        run: |
+          set +e
+          STUB_STATUS=1 LD_LIBRARY_PATH=/x PATH="$RUNNER_TEMP/stub:$PATH" /bin/bash bin/pyenv-doctor >out 2>err; rc=$?
+          set -e
+          cat out err; echo "rc=$rc"
+          [ "$rc" = 1 ]
+          grep -q 'Problem(s) detected' err
+          ! grep -q 'Congratulations' out
+          ! grep -q 'see the warning above' out
