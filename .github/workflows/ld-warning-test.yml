@@ -1,0 +1,41 @@
+name: ld-warning-test
+on: push
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check (system bash)
+        run: /bin/bash --version | head -1 && /bin/bash -n bin/pyenv-doctor
+      - name: Extract the new block
+        run: |
+          start=$(grep -n '^# LD_LIBRARY_PATH' bin/pyenv-doctor | cut -d: -f1)
+          end=$(grep -n '^rm -fr' bin/pyenv-doctor | cut -d: -f1)
+          { echo 'set -e'; sed -n "${start},$((end-1))p" bin/pyenv-doctor; echo 'echo BLOCK_DONE'; } > t.sh
+          cat t.sh
+      - name: No linker vars -> no warning
+        run: |
+          out=$(env -u LD_LIBRARY_PATH -u LD_PRELOAD -u DYLD_LIBRARY_PATH -u DYLD_FALLBACK_LIBRARY_PATH /bin/bash t.sh 2>&1)
+          echo "$out"
+          echo "$out" | grep -q BLOCK_DONE
+          ! echo "$out" | grep -q Warning
+      - name: Linker vars -> warning lists them, LDFLAGS ignored
+        run: |
+          out=$(LD_LIBRARY_PATH=/x LD_PRELOAD=/y DYLD_FALLBACK_LIBRARY_PATH=/z LDFLAGS=-L/q /bin/bash t.sh 2>&1)
+          echo "$out"
+          echo "$out" | grep -q BLOCK_DONE
+          echo "$out" | grep -q 'LD_LIBRARY_PATH'
+          echo "$out" | grep -q 'LD_PRELOAD'
+          # macOS SIP strips DYLD_* when starting /bin/bash, so only check it on Linux
+          if [ "$RUNNER_OS" = Linux ]; then echo "$out" | grep -q 'DYLD_FALLBACK_LIBRARY_PATH'; fi
+          ! echo "$out" | grep -q 'LDFLAGS'
+      - name: Warning goes to stderr only
+        run: |
+          out=$(LD_PRELOAD=/y /bin/bash t.sh 2>/dev/null)
+          echo "$out"
+          ! echo "$out" | grep -q Warning
