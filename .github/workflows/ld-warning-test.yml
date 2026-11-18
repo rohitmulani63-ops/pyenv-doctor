@@ -1,4 +1,4 @@
-name: ld-warning-test
+﻿name: ld-warning-test
 on: push
 permissions:
   contents: read
@@ -6,7 +6,7 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [macos-13, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
